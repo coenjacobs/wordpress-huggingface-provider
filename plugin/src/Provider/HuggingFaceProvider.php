@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace CoenJacobs\HuggingFaceProvider\Provider;
 
+use CoenJacobs\HuggingFaceProvider\Plugin;
 use CoenJacobs\HuggingFaceProvider\Provider\Models\TextGenerationModel;
+use CoenJacobs\HuggingFaceProvider\Dependencies\CoenJacobs\WordPressAiProvider\Provider\ApiKeyProviderAvailability;
 use RuntimeException;
 use WordPress\AiClient\Providers\ApiBasedImplementation\AbstractApiProvider;
 use WordPress\AiClient\Providers\Contracts\ModelMetadataDirectoryInterface;
@@ -40,17 +42,14 @@ class HuggingFaceProvider extends AbstractApiProvider
 
     protected static function createProviderAvailability(): ProviderAvailabilityInterface
     {
-        return new HuggingFaceProviderAvailability();
+        return new ApiKeyProviderAvailability(Plugin::providerConfig());
     }
 
     protected static function createModelMetadataDirectory(): ModelMetadataDirectoryInterface
     {
-        return new HuggingFaceModelMetadataDirectory();
+        return new HuggingFaceModelMetadataDirectory(Plugin::providerConfig());
     }
 
-    /**
-     * Create a text generation model for the given metadata.
-     */
     protected static function createModel(
         ModelMetadata $modelMetadata,
         ProviderMetadata $providerMetadata

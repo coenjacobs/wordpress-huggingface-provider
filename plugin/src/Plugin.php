@@ -5,74 +5,69 @@ declare(strict_types=1);
 namespace CoenJacobs\HuggingFaceProvider;
 
 use CoenJacobs\HuggingFaceProvider\Admin\SettingsPage;
-use CoenJacobs\HuggingFaceProvider\Http\WpHttpClient;
 use CoenJacobs\HuggingFaceProvider\Provider\HuggingFaceProvider;
 use CoenJacobs\HuggingFaceProvider\Provider\HuggingFaceSettings;
-use WordPress\AiClient\AiClient;
-use WordPress\AiClient\Providers\Http\DTO\ApiKeyRequestAuthentication;
-use WordPress\AiClient\Providers\Http\HttpTransporter;
+use CoenJacobs\HuggingFaceProvider\Dependencies\CoenJacobs\WordPressAiProvider\Provider\AbstractProviderPlugin;
+use CoenJacobs\HuggingFaceProvider\Dependencies\CoenJacobs\WordPressAiProvider\Provider\ProviderConfig;
 
-class Plugin
+class Plugin extends AbstractProviderPlugin
 {
-    private static ?Plugin $instance = null;
+    /** @var static|null */
+    protected static $instance = null;
 
-    public static function instance(): Plugin
+    private static ProviderConfig $providerConfig;
+
+    public static function providerConfig(): ProviderConfig
     {
-        if (self::$instance === null) {
-            self::$instance = new self();
+        if (!isset(self::$providerConfig)) {
+            self::$providerConfig = new ProviderConfig([
+                'providerId' => 'huggingface',
+                'providerName' => 'Hugging Face',
+                'envVarName' => 'HUGGINGFACE_API_KEY',
+                'constantName' => 'HUGGINGFACE_API_KEY',
+                'enabledModelsOption' => 'huggingface_enabled_models',
+                'modelsTransientKey' => 'huggingface_models_raw',
+                'errorTransientKey' => 'huggingface_models_fetch_error',
+                'refreshQueryParam' => 'huggingface_refresh_models',
+                'refreshNonceAction' => 'huggingface_refresh_models',
+                'pageSlug' => 'huggingface-provider',
+                'optionGroup' => 'huggingface-provider',
+                'sectionId' => 'huggingface',
+                'sectionTitle' => 'Hugging Face',
+                'sectionDescriptionHtml' => '<p>Get your API token from '
+                    . '<a href="https://huggingface.co/settings/tokens" target="_blank"'
+                    . ' rel="noopener noreferrer">huggingface.co/settings/tokens</a>.</p>',
+                'pageTitle' => 'Hugging Face',
+                'menuTitle' => 'Hugging Face',
+                'infoCardTitle' => 'About Hugging Face',
+                'infoCardDescription' => 'Hugging Face Inference Providers: unified API gateway'
+                    . ' routing requests across multiple inference providers'
+                    . ' with automatic failover.',
+                'websiteUrl' => 'https://huggingface.co/settings/tokens',
+                'websiteLinkText' => 'Get API Token',
+            ]);
         }
 
-        return self::$instance;
+        return self::$providerConfig;
     }
 
-    public function setup(): void
+    protected function getConfig(): ProviderConfig
     {
-        add_action('init', [$this, 'registerProvider'], 5);
-
-        if (is_admin()) {
-            $settings_page = new SettingsPage();
-            add_action('admin_menu', [$settings_page, 'registerMenu']);
-
-            $settings = new HuggingFaceSettings();
-            add_action('admin_init', [$settings, 'registerSettings']);
-        }
+        return self::providerConfig();
     }
 
-    /**
-     * Register the Hugging Face provider with the WordPress AI Client registry.
-     */
-    public function registerProvider(): void
+    protected function getProviderClass(): string
     {
-        if (!class_exists(AiClient::class)) {
-            return;
-        }
+        return HuggingFaceProvider::class;
+    }
 
-        $registry = AiClient::defaultRegistry();
+    protected function createSettingsPage()
+    {
+        return new SettingsPage(self::providerConfig());
+    }
 
-        if ($registry->hasProvider(HuggingFaceProvider::class)) {
-            return;
-        }
-
-        $registry->registerProvider(HuggingFaceProvider::class);
-
-        $api_key = HuggingFaceSettings::getActiveApiKey();
-        if (!empty($api_key)) {
-            $auth = new ApiKeyRequestAuthentication($api_key);
-            $registry->setProviderRequestAuthentication('huggingface', $auth);
-        }
-
-        // Set up the HTTP transporter if not already configured.
-        // This is needed for actual model execution during AI Experiments.
-        // Only works when AI Experiments plugin is installed (provides unscoped PSR interfaces).
-        try {
-            $registry->getHttpTransporter();
-        } catch (\Throwable $e) {
-            if (class_exists('Nyholm\\Psr7\\Factory\\Psr17Factory')) {
-                $factory     = new \Nyholm\Psr7\Factory\Psr17Factory();
-                $client      = new WpHttpClient();
-                $transporter = new HttpTransporter($client, $factory, $factory);
-                $registry->setHttpTransporter($transporter);
-            }
-        }
+    protected function createSettings()
+    {
+        return new HuggingFaceSettings(self::providerConfig());
     }
 }

@@ -4,59 +4,11 @@ declare(strict_types=1);
 
 namespace CoenJacobs\HuggingFaceProvider\Provider;
 
-use CoenJacobs\HuggingFaceProvider\Admin\SettingsPage;
+use CoenJacobs\HuggingFaceProvider\Dependencies\CoenJacobs\WordPressAiProvider\ModelDirectory\AbstractModelMetadataDirectory;
+use CoenJacobs\HuggingFaceProvider\Dependencies\CoenJacobs\WordPressAiProvider\Provider\AbstractProviderSettings;
 
-class HuggingFaceSettings
+class HuggingFaceSettings extends AbstractProviderSettings
 {
-    public const PROVIDER_ID = 'huggingface';
-    public const CREDENTIALS_OPTION = 'wp_ai_client_provider_credentials';
-
-    /**
-     * Check if the API key is configured via environment variable or PHP constant.
-     */
-    public static function hasEnvApiKey(): bool
-    {
-        $env = getenv('HUGGINGFACE_API_KEY');
-        if (is_string($env) && $env !== '') {
-            return true;
-        }
-
-        if (defined('HUGGINGFACE_API_KEY')) {
-            $constant = constant('HUGGINGFACE_API_KEY');
-            return is_string($constant) && $constant !== '';
-        }
-
-        return false;
-    }
-
-    /**
-     * Get the active API key (ENV takes precedence over constant, constant over wp_options).
-     */
-    public static function getActiveApiKey(): string
-    {
-        $env = getenv('HUGGINGFACE_API_KEY');
-        if (is_string($env) && $env !== '') {
-            return $env;
-        }
-
-        if (defined('HUGGINGFACE_API_KEY')) {
-            $constant = constant('HUGGINGFACE_API_KEY');
-            if (is_string($constant) && $constant !== '') {
-                return $constant;
-            }
-        }
-
-        $credentials = get_option(self::CREDENTIALS_OPTION, []);
-        if (is_array($credentials) && isset($credentials[self::PROVIDER_ID])) {
-            $key = $credentials[self::PROVIDER_ID];
-            if (is_string($key)) {
-                return $key;
-            }
-        }
-
-        return '';
-    }
-
     /**
      * Get the configured routing strategy.
      */
@@ -83,109 +35,37 @@ class HuggingFaceSettings
         return trim($org);
     }
 
-    public function registerSettings(): void
+    protected function registerAdditionalSettings(): void
     {
-        $this->handleRefreshModels();
+        $config = $this->getConfig();
 
-        register_setting(SettingsPage::OPTION_GROUP, self::CREDENTIALS_OPTION, [
-            'type' => 'object',
-            'default' => [],
-            'sanitize_callback' => [$this, 'sanitizeCredentials'],
-        ]);
-
-        register_setting(SettingsPage::OPTION_GROUP, 'huggingface_enabled_models', [
-            'type' => 'array',
-            'default' => [],
-            'sanitize_callback' => [$this, 'sanitizeEnabledModels'],
-        ]);
-
-        register_setting(SettingsPage::OPTION_GROUP, 'huggingface_routing_strategy', [
+        register_setting($config->getOptionGroup(), 'huggingface_routing_strategy', [
             'type' => 'string',
             'default' => 'preferred',
             'sanitize_callback' => [$this, 'sanitizeRoutingStrategy'],
         ]);
 
-        register_setting(SettingsPage::OPTION_GROUP, 'huggingface_organization', [
+        register_setting($config->getOptionGroup(), 'huggingface_organization', [
             'type' => 'string',
             'default' => '',
             'sanitize_callback' => 'sanitize_text_field',
         ]);
 
-        add_settings_section(
-            'huggingface',
-            'Hugging Face',
-            [$this, 'renderSectionDescription'],
-            SettingsPage::PAGE_SLUG
-        );
-
-        add_settings_field(
-            'huggingface_api_key',
-            'API Key',
-            [$this, 'renderApiKeyField'],
-            SettingsPage::PAGE_SLUG,
-            'huggingface'
-        );
-
         add_settings_field(
             'huggingface_routing_strategy',
             'Routing Strategy',
             [$this, 'renderRoutingStrategyField'],
-            SettingsPage::PAGE_SLUG,
-            'huggingface'
+            $config->getPageSlug(),
+            $config->getSectionId()
         );
 
         add_settings_field(
             'huggingface_organization',
             'Organization (Billing)',
             [$this, 'renderOrganizationField'],
-            SettingsPage::PAGE_SLUG,
-            'huggingface'
+            $config->getPageSlug(),
+            $config->getSectionId()
         );
-
-        add_settings_field(
-            'huggingface_enabled_models',
-            'Enabled Models',
-            [$this, 'renderModelField'],
-            SettingsPage::PAGE_SLUG,
-            'huggingface'
-        );
-    }
-
-    public function renderSectionDescription(): void
-    {
-        echo '<p>Get your API token from <a href="https://huggingface.co/settings/tokens" target="_blank"'
-            . ' rel="noopener noreferrer">huggingface.co/settings/tokens</a>.</p>';
-    }
-
-    /**
-     * Render the API key settings field, showing env-configured key or an input.
-     */
-    public function renderApiKeyField(): void
-    {
-        if (self::hasEnvApiKey()) {
-            $key = self::getActiveApiKey();
-            $masked = strlen($key) > 8
-                ? substr($key, 0, 3) . str_repeat('*', strlen($key) - 7) . substr($key, -4)
-                : str_repeat('*', strlen($key));
-
-            $source = getenv('HUGGINGFACE_API_KEY') !== false && getenv('HUGGINGFACE_API_KEY') !== ''
-                ? 'HUGGINGFACE_API_KEY environment variable'
-                : 'HUGGINGFACE_API_KEY constant';
-
-            echo '<p>';
-            echo '<span class="dashicons dashicons-yes-alt" style="color: #00a32a;"></span> ';
-            echo 'Configured via ' . esc_html($source);
-            echo ' (<code>' . esc_html($masked) . '</code>)';
-            echo '</p>';
-
-            return;
-        }
-
-        $credentials = get_option(self::CREDENTIALS_OPTION, []);
-        $value = $credentials[self::PROVIDER_ID] ?? '';
-        echo '<input type="password" id="huggingface_api_key"'
-            . ' name="' . esc_attr(self::CREDENTIALS_OPTION) . '[' . esc_attr(self::PROVIDER_ID) . ']"'
-            . ' value="' . esc_attr($value) . '" class="regular-text" autocomplete="off" />';
     }
 
     /**
@@ -225,17 +105,18 @@ class HuggingFaceSettings
     }
 
     /**
-     * Render the model selection checkboxes, grouped by owner prefix.
+     * Renders the model selection field for the settings page.
      */
     public function renderModelField(): void
     {
         $models = $this->fetchModels();
-        $enabled = get_option('huggingface_enabled_models', []);
+        $config = $this->getConfig();
+        $enabled = get_option($config->getEnabledModelsOption(), []);
         if (!is_array($enabled)) {
             $enabled = [];
         }
 
-        $fetchError = get_transient('huggingface_models_fetch_error');
+        $fetchError = get_transient($config->getErrorTransientKey());
         if (is_string($fetchError) && $fetchError !== '') {
             echo '<div class="notice notice-error inline"><p>'
                 . 'Failed to fetch models: ' . esc_html($fetchError)
@@ -257,23 +138,9 @@ class HuggingFaceSettings
         ksort($grouped);
 
         $pluginFile = dirname(__DIR__, 2) . '/huggingface-provider.php';
-        $pluginData = get_file_data($pluginFile, ['Version' => 'Version']);
-        $version = $pluginData['Version'] ?: '0.1.0';
+        $this->enqueueModelSelectorAssets($pluginFile);
 
-        wp_enqueue_script(
-            'huggingface-model-selector',
-            plugins_url('assets/model-selector.js', $pluginFile),
-            [],
-            $version,
-            true
-        );
-
-        wp_enqueue_style(
-            'huggingface-model-selector',
-            plugins_url('assets/model-selector.css', $pluginFile),
-            [],
-            $version
-        );
+        $enabledModelsOption = $config->getEnabledModelsOption();
 
         echo '<div class="model-selector" data-default-collapsed="true" data-grouped="true"'
             . ' data-stale-models="' . esc_attr((string) wp_json_encode($staleModels)) . '">';
@@ -294,7 +161,7 @@ class HuggingFaceSettings
                 echo '<label class="model-selector__item"'
                     . ' data-model-id="' . esc_attr($model['id']) . '"'
                     . ' data-model-name="' . esc_attr($model['name']) . '">';
-                echo '<input type="checkbox" name="huggingface_enabled_models[]"'
+                echo '<input type="checkbox" name="' . esc_attr($enabledModelsOption) . '[]"'
                     . ' value="' . esc_attr($model['id']) . '"' . $checked . '>';
                 echo '<span class="model-selector__item-label">' . esc_html($model['id']) . '</span>';
                 echo '</label>';
@@ -305,30 +172,6 @@ class HuggingFaceSettings
         echo '<p class="model-selector__no-results">No models match your search.</p>';
         echo '</div>';
         echo '</div>';
-    }
-
-    /**
-     * Fetch available models from the API via the model metadata directory.
-     *
-     * @return list<array{id: string, name: string, provider: string}>
-     */
-    private function fetchModels(): array
-    {
-        $directory = new HuggingFaceModelMetadataDirectory();
-        return $directory->fetchAllModels();
-    }
-
-    /**
-     * @param mixed $input
-     * @return list<string>
-     */
-    public function sanitizeEnabledModels($input): array
-    {
-        if (!is_array($input)) {
-            return [];
-        }
-
-        return array_values(array_map('sanitize_text_field', $input));
     }
 
     /**
@@ -346,54 +189,8 @@ class HuggingFaceSettings
         return $input;
     }
 
-    /**
-     * Sanitize the credentials option, merging our key into the shared array.
-     *
-     * @param array|mixed $input
-     * @return array
-     */
-    public function sanitizeCredentials($input): array
+    protected function createModelMetadataDirectory(): AbstractModelMetadataDirectory
     {
-        $existing = get_option(self::CREDENTIALS_OPTION, []);
-        if (!is_array($existing)) {
-            $existing = [];
-        }
-
-        if (!is_array($input)) {
-            return $existing;
-        }
-
-        $new_key = isset($input[self::PROVIDER_ID])
-            ? trim($input[self::PROVIDER_ID])
-            : ($existing[self::PROVIDER_ID] ?? '');
-
-        $old_key = $existing[self::PROVIDER_ID] ?? '';
-        if ($new_key !== $old_key) {
-            delete_transient('huggingface_models_raw');
-        }
-
-        $existing[self::PROVIDER_ID] = $new_key;
-
-        return $existing;
-    }
-
-    private function handleRefreshModels(): void
-    {
-        if (!isset($_GET['huggingface_refresh_models'])) {
-            return;
-        }
-
-        if (!current_user_can('manage_options')) {
-            return;
-        }
-
-        if (!check_admin_referer('huggingface_refresh_models')) {
-            return;
-        }
-
-        delete_transient('huggingface_models_raw');
-
-        wp_safe_redirect(admin_url('options-general.php?page=' . SettingsPage::PAGE_SLUG));
-        exit;
+        return new HuggingFaceModelMetadataDirectory($this->getConfig());
     }
 }
