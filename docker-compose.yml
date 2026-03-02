@@ -5,7 +5,7 @@ services:
       - "8082:80"
     volumes:
       - ./wordpress:/var/www/html
-      - ./plugin:/var/www/html/wp-content/plugins/huggingface-provider
+      - .:/var/www/html/wp-content/plugins/huggingface-provider
     depends_on:
       db:
         condition: service_healthy
